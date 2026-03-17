@@ -1,6 +1,22 @@
 let selectedFiles = [];
 let lastUploadResults = null;
 
+function getApiUploadMessage(apiUpload) {
+  if (!apiUpload || apiUpload.skipped) {
+    return ' | API CSV: non configurata';
+  }
+
+  if (apiUpload.success) {
+    return ` | API CSV: invio completato (HTTP ${apiUpload.statusCode})`;
+  }
+
+  if (apiUpload.attempted && apiUpload.error) {
+    return ` | API CSV: errore (${apiUpload.error})`;
+  }
+
+  return '';
+}
+
 function updateUploadButton() {
   const rifLavorazione = document.getElementById('rifLavorazione').value.trim();
   const tipologiaFile = document.getElementById('tipologiaFile').value;
@@ -109,11 +125,11 @@ document.getElementById('exportCsv').addEventListener('click', async () => {
     if (result.success) {
       const statusDiv = document.getElementById('status');
       statusDiv.className = 'status success';
-      statusDiv.textContent = `✅ CSV esportato con successo: ${result.filePath}`;
+      statusDiv.textContent = `✅ CSV esportato con successo: ${result.filePath}${getApiUploadMessage(result.apiUpload)}`;
     } else if (result.keepInTemp) {
       const statusDiv = document.getElementById('status');
       statusDiv.className = 'status info';
-      statusDiv.textContent = `📁 Esportazione annullata. File disponibile in: ${result.filePath}`;
+      statusDiv.textContent = `📁 Esportazione annullata. File disponibile in: ${result.filePath}${getApiUploadMessage(result.apiUpload)}`;
     }
   } catch (error) {
     const statusDiv = document.getElementById('status');

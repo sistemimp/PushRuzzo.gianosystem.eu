@@ -60,7 +60,14 @@ AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=your_access_key_here
 AWS_SECRET_ACCESS_KEY=your_secret_key_here
 S3_BUCKET=your_bucket_name_here
+CSV_UPLOAD_API_URL=
+CSV_UPLOAD_API_TOKEN=
+CSV_UPLOAD_TIMEOUT_MS=30000
+CSV_UPLOAD_FIELD_NAME=file
 ```
+
+`CSV_UPLOAD_API_URL` is optional. If configured, every generated CSV is also uploaded via `POST multipart/form-data`.
+The CSV file is sent in the field defined by `CSV_UPLOAD_FIELD_NAME` (default: `file`).
 
 ## Logging
 

@@ -33,6 +33,10 @@ const s3Client = new S3Client({
 });
 
 const bucketName = process.env.S3_BUCKET;
+const csvUploadApiUrl = process.env.CSV_UPLOAD_API_URL;
+const csvUploadApiToken = process.env.CSV_UPLOAD_API_TOKEN;
+const csvUploadTimeoutMs = Number.parseInt(process.env.CSV_UPLOAD_TIMEOUT_MS || '30000', 10);
+const csvUploadFieldName = process.env.CSV_UPLOAD_FIELD_NAME || 'file';
 
 let mainWindow;
 
@@ -103,6 +107,67 @@ function getAllFiles(dirPath, arrayOfFiles = []) {
   });
 
   return arrayOfFiles;
+}
+
+function truncateForLog(value, maxLength = 300) {
+  if (!value) return '';
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}...`;
+}
+
+async function uploadCsvToApi(filePath, csvContent) {
+  if (!csvUploadApiUrl) {
+    logger.info('CSV API upload skipped: CSV_UPLOAD_API_URL not configured');
+    return {
+      attempted: false,
+      success: false,
+      skipped: true,
+      reason: 'CSV_UPLOAD_API_URL non configurato'
+    };
+  }
+
+  const headers = {};
+  if (csvUploadApiToken) {
+    headers.Authorization = `Bearer ${csvUploadApiToken}`;
+  }
+
+  const formData = new FormData();
+  const fileName = path.basename(filePath);
+  formData.append(csvUploadFieldName, new Blob([csvContent], { type: 'text/csv' }), fileName);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), csvUploadTimeoutMs);
+
+  try {
+    const response = await fetch(csvUploadApiUrl, {
+      method: 'POST',
+      headers,
+      body: formData,
+      signal: controller.signal
+    });
+
+    const responseBody = await response.text();
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${truncateForLog(responseBody)}`);
+    }
+
+    logger.info(`CSV uploaded to API successfully: ${csvUploadApiUrl} (${response.status})`);
+    return {
+      attempted: true,
+      success: true,
+      statusCode: response.status,
+      response: truncateForLog(responseBody)
+    };
+  } catch (error) {
+    logger.error(`CSV API upload failed: ${error.message}`);
+    return {
+      attempted: true,
+      success: false,
+      error: error.message
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 ipcMain.handle('upload-to-s3', async (event, fileKeys, rifLavorazione, tipologiaFile) => {
@@ -201,6 +266,8 @@ ipcMain.handle('export-csv', async (event, results) => {
     fs.writeFileSync(tempPath, csvContent);
     logger.info(`CSV exported to temp: ${tempPath}`);
 
+    const apiUpload = await uploadCsvToApi(tempPath, csvContent);
+
     // Show save dialog
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: tempPath,
@@ -214,10 +281,10 @@ ipcMain.handle('export-csv', async (event, results) => {
       // Copy file to final location
       fs.copyFileSync(tempPath, result.filePath);
       logger.info(`CSV saved to final location: ${result.filePath}`);
-      return { success: true, filePath: result.filePath, tempPath: tempPath };
+      return { success: true, filePath: result.filePath, tempPath: tempPath, apiUpload };
     } else {
       logger.info(`CSV export canceled by user. File remains in temp at: ${tempPath}`);
-      return { success: false, filePath: tempPath, tempPath: tempPath, keepInTemp: true };
+      return { success: false, filePath: tempPath, tempPath: tempPath, keepInTemp: true, apiUpload };
     }
   } catch (error) {
     logger.error(`Failed to export CSV: ${error.message}`);
