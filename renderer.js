@@ -1,6 +1,12 @@
 let selectedFiles = [];
 let lastUploadResults = null;
 
+function setStatus(type, message) {
+  const statusDiv = document.getElementById('status');
+  statusDiv.className = `status ${type}`;
+  statusDiv.textContent = message;
+}
+
 function getApiUploadMessage(apiUpload) {
   if (!apiUpload || apiUpload.skipped) {
     return ' | API CSV: non configurata';
@@ -28,23 +34,54 @@ function updateUploadButton() {
 document.getElementById('rifLavorazione').addEventListener('input', updateUploadButton);
 document.getElementById('tipologiaFile').addEventListener('change', updateUploadButton);
 
+document.getElementById('checkUpdates').addEventListener('click', async () => {
+  setStatus('info', '🔄 Controllo aggiornamenti in corso...');
+  const result = await window.electronAPI.checkForUpdates();
+  if (!result.success) {
+    setStatus('error', `❌ ${result.message}`);
+  }
+});
+
+window.electronAPI.onUpdaterStatus((_event, payload) => {
+  switch (payload.type) {
+    case 'checking':
+      setStatus('info', `🔄 ${payload.message}`);
+      break;
+    case 'available':
+      setStatus('info', `🆕 ${payload.message}`);
+      break;
+    case 'downloading':
+      setStatus('info', `⬇️ ${payload.message}`);
+      break;
+    case 'downloaded':
+      setStatus('success', `✅ ${payload.message}`);
+      break;
+    case 'not-available':
+      setStatus('info', `ℹ️ ${payload.message}`);
+      break;
+    case 'disabled':
+      setStatus('info', `ℹ️ ${payload.message}`);
+      break;
+    case 'error':
+      setStatus('error', `❌ ${payload.message}`);
+      break;
+    default:
+      break;
+  }
+});
+
 document.getElementById('testConnection').addEventListener('click', async () => {
-  const statusDiv = document.getElementById('status');
-  statusDiv.className = 'status info';
-  statusDiv.textContent = '🔄 Test connessione in corso...';
+  setStatus('info', '🔄 Test connessione in corso...');
   
   try {
     const result = await window.electronAPI.testConnection();
     if (result.success) {
-      statusDiv.className = 'status success';
-      statusDiv.textContent = `✅ ${result.message}`;
+      setStatus('success', `✅ ${result.message}`);
     } else {
-      statusDiv.className = 'status error';
-      statusDiv.textContent = `❌ ${result.message}`;
+      setStatus('error', `❌ ${result.message}`);
     }
   } catch (error) {
-    statusDiv.className = 'status error';
-    statusDiv.textContent = `❌ Errore: ${error.message}`;
+    setStatus('error', `❌ Errore: ${error.message}`);
   }
 });
 
@@ -62,15 +99,13 @@ document.getElementById('upload').addEventListener('click', async () => {
     file: fileObj.fullPath
   }));
 
-  const statusDiv = document.getElementById('status');
   const progressContainer = document.getElementById('progressContainer');
   const currentFileDiv = document.getElementById('currentFile');
   const fileProgressBar = document.getElementById('fileProgressBar');
   const overallProgressBar = document.getElementById('overallProgressBar');
   const overallProgressText = document.getElementById('overallProgressText');
 
-  statusDiv.className = 'status info';
-  statusDiv.textContent = '🚀 Upload in corso...';
+  setStatus('info', '🚀 Upload in corso...');
   progressContainer.style.display = 'block';
   fileProgressBar.value = 0;
   overallProgressBar.value = 0;
@@ -88,11 +123,11 @@ document.getElementById('upload').addEventListener('click', async () => {
   try {
     const results = await window.electronAPI.uploadToS3(fileKeys, rifLavorazione, tipologiaFile);
     lastUploadResults = results;
-    statusDiv.className = 'status success';
-    statusDiv.textContent = '✅ Upload completato!';
+    setStatus('success', '✅ Upload completato!');
     progressContainer.style.display = 'none';
 
     // Display results
+    const statusDiv = document.getElementById('status');
     results.forEach(result => {
       const div = document.createElement('div');
       div.className = result.status === 'success' ? 'result-item result-success' : 'result-item result-error';
@@ -104,8 +139,7 @@ document.getElementById('upload').addEventListener('click', async () => {
     // Show export section
     document.getElementById('exportSection').style.display = 'block';
   } catch (error) {
-    statusDiv.className = 'status error';
-    statusDiv.textContent = `❌ Errore: ${error.message}`;
+    setStatus('error', `❌ Errore: ${error.message}`);
     progressContainer.style.display = 'none';
   }
 });
@@ -123,18 +157,12 @@ document.getElementById('exportCsv').addEventListener('click', async () => {
   try {
     const result = await window.electronAPI.exportCsv(lastUploadResults);
     if (result.success) {
-      const statusDiv = document.getElementById('status');
-      statusDiv.className = 'status success';
-      statusDiv.textContent = `✅ CSV esportato con successo: ${result.filePath}${getApiUploadMessage(result.apiUpload)}`;
+      setStatus('success', `✅ CSV esportato con successo: ${result.filePath}${getApiUploadMessage(result.apiUpload)}`);
     } else if (result.keepInTemp) {
-      const statusDiv = document.getElementById('status');
-      statusDiv.className = 'status info';
-      statusDiv.textContent = `📁 Esportazione annullata. File disponibile in: ${result.filePath}${getApiUploadMessage(result.apiUpload)}`;
+      setStatus('info', `📁 Esportazione annullata. File disponibile in: ${result.filePath}${getApiUploadMessage(result.apiUpload)}`);
     }
   } catch (error) {
-    const statusDiv = document.getElementById('status');
-    statusDiv.className = 'status error';
-    statusDiv.textContent = `❌ Errore nell'esportazione: ${error.message}`;
+    setStatus('error', `❌ Errore nell'esportazione: ${error.message}`);
   } finally {
     exportBtn.disabled = false;
     exportBtn.textContent = '📊 Esporta CSV';

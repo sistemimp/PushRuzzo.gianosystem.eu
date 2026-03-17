@@ -1,6 +1,6 @@
 {
   "name": "ruzzo-electron-s3-uploader",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "Electron app to upload files Ruzzo to Amazon S3",
   "main": "main.js",
   "scripts": {
@@ -27,7 +27,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "PushRuzzo S3 Uploader"
+      "shortcutName": "Push Ruzzo S3 Uploader"
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.exe"

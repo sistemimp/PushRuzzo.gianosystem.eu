@@ -50,6 +50,22 @@ npm run build
 
 I file compilati sono salvati nella cartella `dist/`.
 
+### Auto Update (electron-updater)
+
+L'app è configurata per cercare aggiornamenti da:
+
+`https://gestionale.mediaprint.it/ElectronAppUpdate/ruzzo-electron-s3-uploader/`
+
+Per funzionare correttamente in produzione:
+
+1. Esegui `npm run build`
+2. Pubblica nella cartella del sito sia l'installer NSIS (`*.exe`) sia il file `latest.yml` generati in `dist/`
+3. Mantieni entrambi i file sempre allineati alla stessa versione
+
+Note:
+- L'auto-update è disponibile nella build installabile (NSIS)
+- La build portable non supporta l'aggiornamento automatico in-place
+
 ## Configuration
 
 1. Copy `.env.example` to `.env`
