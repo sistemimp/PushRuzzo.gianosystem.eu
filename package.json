@@ -4,12 +4,46 @@
   "description": "Electron app to upload files Ruzzo to Amazon S3",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder",
+    "dist": "electron-builder -p always"
   },
   "author": "AlexOlivieri",
   "license": "MIT",
+  "build": {
+    "appId": "com.giano.s3uploader",
+    "productName": "PushRuzzo S3 Uploader",
+    "directories": {
+      "buildResources": "assets"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PushRuzzo S3 Uploader"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.exe"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "index.html",
+      "renderer.js",
+      "node_modules/**/*",
+      ".env.example"
+    ]
+  },
   "devDependencies": {
-    "electron": "^25.0.0"
+    "electron": "^25.0.0",
+    "electron-builder": "^24.13.3"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.400.0",

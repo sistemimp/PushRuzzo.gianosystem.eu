@@ -1,6 +1,6 @@
-# Electron S3 Uploader
+# PushRuzzo S3 Uploader
 
-An Electron application that allows uploading files from a local folder to Amazon S3 using the AWS SDK for Node.js.
+Un'applicazione Electron moderna e sicura per caricare file su Amazon S3 con struttura organizzata.
 
 ## Features
 
@@ -16,12 +16,39 @@ An Electron application that allows uploading files from a local folder to Amazo
 - Node.js installed
 - AWS credentials configured (see below)
 
-## Setup
+## Installation
+
+### Pre-built Installers (Windows)
+
+Due file eseguibili sono disponibili nella cartella `dist`:
+
+1. **PushRuzzo S3 Uploader Setup 1.0.0.exe** - Installer NSIS
+   - Installa l'app nel Program Files
+   - Crea shortcut su Desktop e Start Menu
+   - Consigliato per gli utenti finali
+
+2. **PushRuzzo S3 Uploader-1.0.0-portable.exe** - Portable version
+   - No installation required
+   - Esegui direttamente senza installazione
+   - Perfetto per utilizzo temporaneo o su USB
+
+### Development Setup
 
 1. Clone or download this project
 2. Run `npm install` to install dependencies
-3. Configure AWS credentials in `.env` file (see below)
-4. Run `npm start` to launch the app
+3. Configure AWS credentials in `.env` file (copy `.env.example` and fill in your values)
+4. Run `npm start` to launch the app in development mode
+
+### Building Installers
+
+Per creare i propri installer eseguibili:
+
+```bash
+npm install
+npm run build
+```
+
+I file compilati sono salvati nella cartella `dist/`.
 
 ## Configuration
 
