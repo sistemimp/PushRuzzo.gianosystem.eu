@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const { S3Client, PutObjectCommand, HeadBucketCommand } = require('@aws-sdk/client-s3');
+const { autoUpdater } = require('electron-updater');
 const winston = require('winston');
 require('dotenv').config();
 
@@ -37,8 +38,16 @@ const csvUploadApiUrl = process.env.CSV_UPLOAD_API_URL;
 const csvUploadApiToken = process.env.CSV_UPLOAD_API_TOKEN;
 const csvUploadTimeoutMs = Number.parseInt(process.env.CSV_UPLOAD_TIMEOUT_MS || '30000', 10);
 const csvUploadFieldName = process.env.CSV_UPLOAD_FIELD_NAME || 'file';
+const isPortableBuild = Boolean(process.env.PORTABLE_EXECUTABLE_FILE);
 
 let mainWindow;
+let updaterEnabled = false;
+let updaterChecking = false;
+
+function sendUpdaterStatus(payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('updater-status', payload);
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -54,7 +63,110 @@ function createWindow() {
   mainWindow.loadFile('index.html');
 }
 
-app.whenReady().then(createWindow);
+async function checkForUpdates(source = 'manual') {
+  if (!updaterEnabled) {
+    return { success: false, message: 'Auto updater non disponibile in questa build' };
+  }
+
+  if (updaterChecking) {
+    return { success: false, message: 'Controllo aggiornamenti già in corso' };
+  }
+
+  try {
+    await autoUpdater.checkForUpdates();
+    logger.info(`Update check requested (${source})`);
+    return { success: true, message: 'Controllo aggiornamenti avviato' };
+  } catch (error) {
+    logger.error(`Failed to check updates (${source}): ${error.message}`);
+    sendUpdaterStatus({ type: 'error', message: `Errore controllo update: ${error.message}` });
+    return { success: false, message: error.message };
+  }
+}
+
+function initAutoUpdater() {
+  const isPackaged = app.isPackaged;
+  updaterEnabled = isPackaged && !isPortableBuild;
+
+  if (!updaterEnabled) {
+    const reason = !isPackaged
+      ? 'Auto updater disabilitato in development mode'
+      : 'Auto updater non supportato nella build portable';
+    logger.info(reason);
+    sendUpdaterStatus({ type: 'disabled', message: reason });
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = logger;
+
+  autoUpdater.on('checking-for-update', () => {
+    updaterChecking = true;
+    logger.info('Checking for updates...');
+    sendUpdaterStatus({ type: 'checking', message: 'Controllo aggiornamenti in corso...' });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    logger.info(`Update available: ${info.version}`);
+    sendUpdaterStatus({ type: 'available', message: `Aggiornamento disponibile: v${info.version}` });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    updaterChecking = false;
+    logger.info('No updates available');
+    sendUpdaterStatus({ type: 'not-available', message: 'Nessun aggiornamento disponibile' });
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    const percent = Math.round(progressObj.percent || 0);
+    sendUpdaterStatus({
+      type: 'downloading',
+      message: `Download aggiornamento: ${percent}%`,
+      percent
+    });
+  });
+
+  autoUpdater.on('update-downloaded', async (info) => {
+    updaterChecking = false;
+    logger.info(`Update downloaded: ${info.version}`);
+    sendUpdaterStatus({ type: 'downloaded', message: `Aggiornamento pronto: v${info.version}` });
+
+    const result = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      buttons: ['Riavvia ora', 'Più tardi'],
+      defaultId: 0,
+      cancelId: 1,
+      title: 'Aggiornamento pronto',
+      message: `La versione ${info.version} è stata scaricata.`,
+      detail: 'Riavvia ora per completare l’installazione.'
+    });
+
+    if (result.response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  autoUpdater.on('error', (error) => {
+    updaterChecking = false;
+    logger.error(`Auto updater error: ${error.message}`);
+    sendUpdaterStatus({ type: 'error', message: `Errore auto-update: ${error.message}` });
+  });
+}
+
+app.whenReady().then(async () => {
+  createWindow();
+  initAutoUpdater();
+
+  if (updaterEnabled) {
+    setTimeout(() => {
+      checkForUpdates('startup');
+    }, 5000);
+
+    setInterval(() => {
+      checkForUpdates('scheduled');
+    }, 1000 * 60 * 60 * 6);
+  }
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -65,6 +177,8 @@ app.on('activate', () => {
 });
 
 // IPC handlers
+ipcMain.handle('check-for-updates', async () => checkForUpdates('manual'));
+
 ipcMain.handle('test-connection', async () => {
   try {
     const command = new HeadBucketCommand({
