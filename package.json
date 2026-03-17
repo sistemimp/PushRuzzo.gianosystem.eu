@@ -13,10 +13,12 @@
   "build": {
     "appId": "com.giano.s3uploader",
     "productName": "PushRuzzo S3 Uploader",
+    "icon": "assets/favicon.ico",
     "directories": {
       "buildResources": "assets"
     },
     "win": {
+      "icon": "assets/favicon.ico",
       "target": [
         "nsis",
         "portable"
@@ -27,7 +29,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Push Ruzzo S3 Uploader"
+      "shortcutName": "Push Ruzzo S3 Uploader",
+      "installerIcon": "assets/favicon.ico",
+      "uninstallerIcon": "assets/favicon.ico",
+      "installerHeaderIcon": "assets/favicon.ico"
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.exe"
@@ -43,6 +48,7 @@
       "preload.js",
       "index.html",
       "renderer.js",
+      "assets/**/*",
       "node_modules/**/*",
       ".env.example"
     ]

@@ -10,6 +10,7 @@ Un'applicazione Electron moderna e sicura per caricare file su Amazon S3 con str
 - 📊 Dual progress bars: individual file progress and overall upload progress
 - 💾 Export upload results to CSV with MD5(filename) and S3 key
 - 🎨 Modern, responsive UI with real-time feedback
+- 🖼️ App icon and logo loaded from `assets/favicon.ico` and `assets/logo.png`
 
 ## Prerequisites
 
