@@ -1,0 +1,67 @@
+# Electron S3 Uploader
+
+An Electron application that allows uploading files from a local folder to Amazon S3 using the AWS SDK for Node.js.
+
+## Features
+
+- 🔗 Test S3 connection before uploading
+- 📁 Select an entire folder to upload all its files (including subfolders)
+- 🔑 Automatic S3 key generation: `Rif.Lavorazione/TipologiaFile/MD5(filename).extension`
+- 📊 Dual progress bars: individual file progress and overall upload progress
+- 💾 Export upload results to CSV with MD5(filename) and S3 key
+- 🎨 Modern, responsive UI with real-time feedback
+
+## Prerequisites
+
+- Node.js installed
+- AWS credentials configured (see below)
+
+## Setup
+
+1. Clone or download this project
+2. Run `npm install` to install dependencies
+3. Configure AWS credentials in `.env` file (see below)
+4. Run `npm start` to launch the app
+
+## Configuration
+
+1. Copy `.env.example` to `.env`
+2. Fill in your actual AWS credentials and S3 bucket name in the `.env` file
+
+```
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your_access_key_here
+AWS_SECRET_ACCESS_KEY=your_secret_key_here
+S3_BUCKET=your_bucket_name_here
+```
+
+## Logging
+
+The app logs all upload activities to a file located in your system's temporary directory (`%TEMP%\electron-s3-uploader.log` on Windows).
+
+## Usage
+
+1. Enter the "Rif.Lavorazione" and select "Tipologia File" (Avvisi or Scansioni)
+2. Click "Test Connection" to verify S3 credentials and bucket access
+3. Click "Select Folder" to choose a folder
+4. The app will scan all files in the selected folder (including subfolders)
+5. S3 keys will be automatically generated as: `Rif.Lavorazione/TipologiaFile/MD5(filename).extension`
+6. Click "Upload to S3" to upload all files
+7. Monitor the dual progress bars: one for the current file being uploaded, and one for overall progress
+8. After upload completes, click "Export CSV" to save the results
+9. A CSV file with filename and S3 keys will be saved to your chosen location
+10. A copy is also kept in the system temp folder with a timestamp
+
+The app will upload files to the bucket specified in the `.env` file.
+
+## Development
+
+- Main process: `main.js`
+- Renderer process: `index.html` and `renderer.js`
+- Preload script: `preload.js`
+
+## Troubleshooting
+
+- Ensure AWS credentials are properly configured
+- Check that the S3 bucket exists and you have write permissions
+- Verify the region in `main.js` matches your bucket's region
