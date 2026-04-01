@@ -1,5 +1,11 @@
 let selectedFiles = [];
+let selectedFolderToken = null;
+let selectedFilesCount = 0;
+let selectedPreviewLimit = 0;
 let lastUploadResults = null;
+let lastTipologiaFile = null;
+
+const RESULT_PREVIEW_LIMIT = 250;
 
 function setStatus(type, message) {
   const statusDiv = document.getElementById('status');
@@ -8,8 +14,10 @@ function setStatus(type, message) {
 }
 
 function getApiUploadMessage(apiUpload) {
-  if (!apiUpload || apiUpload.skipped) {
-    return ' | API CSV: non configurata';
+  if (!apiUpload) return '';
+  if (apiUpload.skipped) {
+    const reason = apiUpload.reason ? ` (${apiUpload.reason})` : '';
+    return ` | API CSV: saltato${reason}`;
   }
 
   if (apiUpload.success) {
@@ -28,7 +36,7 @@ function updateUploadButton() {
   const tipologiaFile = document.getElementById('tipologiaFile').value;
   const uploadBtn = document.getElementById('upload');
 
-  uploadBtn.disabled = !rifLavorazione || !tipologiaFile || selectedFiles.length === 0;
+  uploadBtn.disabled = !rifLavorazione || !tipologiaFile || selectedFilesCount === 0 || !selectedFolderToken;
 }
 
 document.getElementById('rifLavorazione').addEventListener('input', updateUploadButton);
@@ -72,7 +80,7 @@ window.electronAPI.onUpdaterStatus((_event, payload) => {
 
 document.getElementById('testConnection').addEventListener('click', async () => {
   setStatus('info', '🔄 Test connessione in corso...');
-  
+
   try {
     const result = await window.electronAPI.testConnection();
     if (result.success) {
@@ -86,18 +94,31 @@ document.getElementById('testConnection').addEventListener('click', async () => 
 });
 
 document.getElementById('selectFolder').addEventListener('click', async () => {
-  selectedFiles = await window.electronAPI.selectFolder();
+  const selection = await window.electronAPI.selectFolder();
+
+  if (!selection || !selection.selected) {
+    selectedFiles = [];
+    selectedFolderToken = null;
+    selectedFilesCount = 0;
+    selectedPreviewLimit = 0;
+    displayFiles();
+    updateUploadButton();
+    return;
+  }
+
+  selectedFiles = selection.previewFiles || [];
+  selectedFolderToken = selection.token || null;
+  selectedFilesCount = selection.totalFiles || selectedFiles.length;
+  selectedPreviewLimit = selection.previewLimit || selectedFiles.length;
+
   displayFiles();
+  setStatus('info', `📁 Cartella selezionata: ${selectedFilesCount} file trovati`);
   updateUploadButton();
 });
 
 document.getElementById('upload').addEventListener('click', async () => {
   const rifLavorazione = document.getElementById('rifLavorazione').value.trim();
   const tipologiaFile = document.getElementById('tipologiaFile').value;
-
-  const fileKeys = selectedFiles.map((fileObj) => ({
-    file: fileObj.fullPath
-  }));
 
   const progressContainer = document.getElementById('progressContainer');
   const currentFileDiv = document.getElementById('currentFile');
@@ -112,8 +133,7 @@ document.getElementById('upload').addEventListener('click', async () => {
   overallProgressText.textContent = '0%';
   currentFileDiv.textContent = '📋 Preparazione upload...';
 
-  // Listen for progress updates
-  window.electronAPI.onUploadProgress((event, data) => {
+  window.electronAPI.onUploadProgress((_event, data) => {
     currentFileDiv.textContent = `📄 Upload: ${data.currentFile}`;
     fileProgressBar.value = data.fileProgress;
     overallProgressBar.value = data.overallProgress;
@@ -121,22 +141,30 @@ document.getElementById('upload').addEventListener('click', async () => {
   });
 
   try {
-    const results = await window.electronAPI.uploadToS3(fileKeys, rifLavorazione, tipologiaFile);
+    const payload = {
+      selectionToken: selectedFolderToken,
+      fileKeys: []
+    };
+
+    const results = await window.electronAPI.uploadToS3(payload, rifLavorazione, tipologiaFile);
     lastUploadResults = results;
-    setStatus('success', '✅ Upload completato!');
+    lastTipologiaFile = tipologiaFile;
+
+    let apiUploadResult;
+    try {
+      apiUploadResult = await window.electronAPI.uploadCsvAfterUpload(results, tipologiaFile);
+    } catch (err) {
+      apiUploadResult = { attempted: true, success: false, error: err.message };
+    }
+
+    const successCount = results.filter((r) => r.status === 'success').length;
+    const existedCount = results.filter((r) => r.status === 'success' && r.existedOnS3).length;
+    const resumedCount = results.filter((r) => r.resumed).length;
+    const errorCount = results.length - successCount;
+    setStatus('success', `✅ Upload completato! Successi: ${successCount}, Esistenti su S3: ${existedCount}, Ripresi da resume: ${resumedCount}, Errori: ${errorCount}${getApiUploadMessage(apiUploadResult)}`);
     progressContainer.style.display = 'none';
 
-    // Display results
-    const statusDiv = document.getElementById('status');
-    results.forEach(result => {
-      const div = document.createElement('div');
-      div.className = result.status === 'success' ? 'result-item result-success' : 'result-item result-error';
-      div.textContent = `${result.status === 'success' ? '✅' : '❌'} ${result.file} → ${result.key}`;
-      if (result.error) div.textContent += ` - Errore: ${result.error}`;
-      statusDiv.appendChild(div);
-    });
-
-    // Show export section
+    renderUploadResults(results);
     document.getElementById('exportSection').style.display = 'block';
   } catch (error) {
     setStatus('error', `❌ Errore: ${error.message}`);
@@ -155,7 +183,7 @@ document.getElementById('exportCsv').addEventListener('click', async () => {
   exportBtn.textContent = '⏳ Esportazione in corso...';
 
   try {
-    const result = await window.electronAPI.exportCsv(lastUploadResults);
+    const result = await window.electronAPI.exportCsv(lastUploadResults, lastTipologiaFile);
     if (result.success) {
       setStatus('success', `✅ CSV esportato con successo: ${result.filePath}${getApiUploadMessage(result.apiUpload)}`);
     } else if (result.keepInTemp) {
@@ -169,15 +197,48 @@ document.getElementById('exportCsv').addEventListener('click', async () => {
   }
 });
 
-function basename(filePath) {
-  return filePath.split('\\').pop().split('/').pop();
+function renderUploadResults(results) {
+  const statusDiv = document.getElementById('status');
+
+  const summary = document.createElement('div');
+  summary.className = 'result-item';
+  const successCount = results.filter((r) => r.status === 'success').length;
+  const existedCount = results.filter((r) => r.status === 'success' && r.existedOnS3).length;
+  const resumedCount = results.filter((r) => r.resumed).length;
+  const errorCount = results.length - successCount;
+  summary.textContent = `Riepilogo: ${results.length} file, ${successCount} successi, ${existedCount} gia presenti su S3, ${resumedCount} ripresi da resume, ${errorCount} errori`;
+  statusDiv.appendChild(summary);
+
+  const preview = results.slice(0, RESULT_PREVIEW_LIMIT);
+  preview.forEach((result) => {
+    const div = document.createElement('div');
+    div.className = result.status === 'success' ? 'result-item result-success' : 'result-item result-error';
+    const icon = result.status !== 'success'
+      ? '❌'
+      : (result.resumed ? '♻️' : (result.existedOnS3 ? '↩️' : '✅'));
+    div.textContent = `${icon} ${result.file} → ${result.key}`;
+    if (result.error) div.textContent += ` - Errore: ${result.error}`;
+    statusDiv.appendChild(div);
+  });
+
+  if (results.length > RESULT_PREVIEW_LIMIT) {
+    const extra = document.createElement('div');
+    extra.className = 'result-item';
+    extra.textContent = `Mostrati solo i primi ${RESULT_PREVIEW_LIMIT} risultati su ${results.length}.`;
+    statusDiv.appendChild(extra);
+  }
 }
 
 function displayFiles() {
   const fileListDiv = document.getElementById('fileList');
   fileListDiv.innerHTML = '';
 
-  if (selectedFiles.length === 0) return;
+  if (selectedFilesCount === 0) return;
+
+  const meta = document.createElement('div');
+  meta.className = 'file-item';
+  meta.textContent = `Totale file: ${selectedFilesCount}`;
+  fileListDiv.appendChild(meta);
 
   selectedFiles.forEach((fileObj) => {
     const fileDiv = document.createElement('div');
@@ -185,4 +246,11 @@ function displayFiles() {
     fileDiv.textContent = `📄 ${fileObj.relativePath}`;
     fileListDiv.appendChild(fileDiv);
   });
+
+  if (selectedFilesCount > selectedPreviewLimit) {
+    const hidden = document.createElement('div');
+    hidden.className = 'file-item';
+    hidden.textContent = `... e altri ${selectedFilesCount - selectedPreviewLimit} file non mostrati in anteprima`;
+    fileListDiv.appendChild(hidden);
+  }
 }

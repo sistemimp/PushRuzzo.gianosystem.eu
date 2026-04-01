@@ -7,6 +7,8 @@ Un'applicazione Electron moderna e sicura per caricare file su Amazon S3 con str
 - 🔗 Test S3 connection before uploading
 - 📁 Select an entire folder to upload all its files (including subfolders)
 - 🔑 Automatic S3 key generation: `Rif.Lavorazione/TipologiaFile/MD5(filename).extension`
+- ⏯️ Automatic resume point after interruption/restart (same folder + Rif + Tipologia)
+- 🛡️ Overwrite protection on S3 (`If-None-Match: *`): existing objects are not replaced
 - 📊 Dual progress bars: individual file progress and overall upload progress
 - 💾 Export upload results to CSV with MD5(filename) and S3 key
 - 🎨 Modern, responsive UI with real-time feedback
@@ -81,10 +83,20 @@ CSV_UPLOAD_API_URL=
 CSV_UPLOAD_API_TOKEN=
 CSV_UPLOAD_TIMEOUT_MS=30000
 CSV_UPLOAD_FIELD_NAME=file
+UPLOAD_START_API_URL=
+UPLOAD_END_API_URL=
+UPLOAD_TRACKING_TIMEOUT_MS=30000
+UPLOAD_CONCURRENCY=4
+FILE_LIST_PREVIEW_LIMIT=300
 ```
 
 `CSV_UPLOAD_API_URL` is optional. If configured, every generated CSV is also uploaded via `POST multipart/form-data`.
 The CSV file is sent in the field defined by `CSV_UPLOAD_FIELD_NAME` (default: `file`).
+`UPLOAD_START_API_URL` and `UPLOAD_END_API_URL` are optional GET endpoints for upload tracking.
+At upload start, the app sends `numeroCaricamenti` automatically from the selected folder total and expects an `id` in response.
+At upload end, the app sends that `id` plus `numeroProcessatiCorrettamente`, computed by an internal success counter.
+`UPLOAD_CONCURRENCY` controls how many files are uploaded in parallel (default: `4`).
+`FILE_LIST_PREVIEW_LIMIT` limits how many selected files are rendered in UI preview (default: `300`).
 
 ## Logging
 
@@ -116,3 +128,4 @@ The app will upload files to the bucket specified in the `.env` file.
 - Ensure AWS credentials are properly configured
 - Check that the S3 bucket exists and you have write permissions
 - Verify the region in `main.js` matches your bucket's region
+
