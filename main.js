@@ -4,7 +4,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const os = require('os');
 const crypto = require('crypto');
-const { S3Client, PutObjectCommand, HeadBucketCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, HeadBucketCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { autoUpdater } = require('electron-updater');
 const winston = require('winston');
 require('dotenv').config();
@@ -239,6 +239,39 @@ ipcMain.handle('select-folder', async () => {
   };
 });
 
+ipcMain.handle('delete-from-csv', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [
+      { name: 'CSV Files', extensions: ['csv'] },
+      { name: 'All Files', extensions: ['*'] }
+    ]
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true, deleted: [], failed: [], totalKeys: 0 };
+  }
+
+  const csvPath = result.filePaths[0];
+  const csvContent = await fsp.readFile(csvPath, 'utf8');
+  const keys = extractKeysFromCsv(csvContent);
+
+  if (keys.length === 0) {
+    throw new Error('Il CSV non contiene key S3 valide da eliminare');
+  }
+
+  logger.info(`Starting delete from CSV ${csvPath}: ${keys.length} keys on bucket ${bucketName}`);
+  const { deleted, failed } = await deleteKeysFromBucket(keys);
+
+  return {
+    canceled: false,
+    csvPath,
+    totalKeys: keys.length,
+    deleted,
+    failed
+  };
+});
+
 async function getAllFilesAsync(rootPath) {
   const files = [];
   const dirs = [rootPath];
@@ -271,6 +304,97 @@ function truncateForLog(value, maxLength = 300) {
   if (!value) return '';
   if (value.length <= maxLength) return value;
   return `${value.slice(0, maxLength)}...`;
+}
+
+function splitCsvLine(line) {
+  const fields = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      fields.push(current);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  fields.push(current);
+  return fields.map((field) => field.trim());
+}
+
+function parseCsvRows(csvContent) {
+  const normalized = csvContent.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = normalized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return [];
+  }
+
+  return lines.map(splitCsvLine);
+}
+
+function normalizeKeyValue(value) {
+  if (typeof value !== 'string') return '';
+  return value.trim().replace(/^"(.*)"$/, '$1').trim();
+}
+
+function extractKeysFromCsv(csvContent) {
+  const rows = parseCsvRows(csvContent);
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const [headerRow, ...dataRows] = rows;
+  const normalizedHeaders = headerRow.map((header) => normalizeKeyValue(header).toLowerCase());
+  const keyHeaderCandidates = ['chiave s3', 's3 key', 'key', 'chiave'];
+  const keyColumnIndex = normalizedHeaders.findIndex((header) => keyHeaderCandidates.includes(header));
+
+  const rowsToProcess = keyColumnIndex >= 0 ? dataRows : rows;
+  const inferredIndex = keyColumnIndex >= 0 ? keyColumnIndex : (rows[0].length > 1 ? 1 : 0);
+
+  return rowsToProcess
+    .map((row) => normalizeKeyValue(row[inferredIndex] || ''))
+    .filter(Boolean);
+}
+
+async function deleteKeysFromBucket(keys) {
+  const deleted = [];
+  const failed = [];
+
+  for (const key of keys) {
+    try {
+      await s3Client.send(new DeleteObjectCommand({
+        Bucket: bucketName,
+        Key: key
+      }));
+      deleted.push({ key, status: 'success' });
+      logger.info(`Deleted S3 object: ${key}`);
+    } catch (error) {
+      failed.push({ key, status: 'error', error: error.message });
+      logger.error(`Failed to delete S3 object ${key}: ${error.message}`);
+    }
+  }
+
+  return { deleted, failed };
 }
 
 async function uploadCsvToApi(filePath, csvContent, tipologiaFile) {

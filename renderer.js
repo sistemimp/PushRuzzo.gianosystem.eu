@@ -116,6 +116,34 @@ document.getElementById('selectFolder').addEventListener('click', async () => {
   updateUploadButton();
 });
 
+document.getElementById('deleteFromCsv').addEventListener('click', async () => {
+  setStatus('info', '🗑️ Seleziona il CSV contenente le key S3 da eliminare...');
+
+  try {
+    const result = await window.electronAPI.deleteFromCsv();
+
+    if (!result || result.canceled) {
+      setStatus('info', 'ℹ️ Eliminazione annullata');
+      return;
+    }
+
+    const deletedCount = Array.isArray(result.deleted) ? result.deleted.length : 0;
+    const failedCount = Array.isArray(result.failed) ? result.failed.length : 0;
+    const baseMessage = `🗑️ Eliminazione completata. Totale key: ${result.totalKeys}, eliminate: ${deletedCount}, errori: ${failedCount}`;
+
+    if (failedCount > 0) {
+      const preview = result.failed.slice(0, 3).map((item) => item.key).join(', ');
+      const suffix = preview ? ` | Key fallite: ${preview}` : '';
+      setStatus('error', `⚠️ ${baseMessage}${suffix}`);
+      return;
+    }
+
+    setStatus('success', `✅ ${baseMessage}`);
+  } catch (error) {
+    setStatus('error', `❌ Errore eliminazione da CSV: ${error.message}`);
+  }
+});
+
 document.getElementById('upload').addEventListener('click', async () => {
   const rifLavorazione = document.getElementById('rifLavorazione').value.trim();
   const tipologiaFile = document.getElementById('tipologiaFile').value;
